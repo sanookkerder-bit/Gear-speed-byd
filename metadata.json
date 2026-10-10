@@ -1,0 +1,6 @@
+{
+  "name": "BYD EV Nav",
+  "description": "BYD EV Battery telemetry via Wireless ADB and Google Maps route destination battery estimation.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
