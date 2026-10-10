@@ -2,6 +2,7 @@ package com.example.service.adb
 
 import android.util.Log
 import com.example.model.BydBatteryData
+import com.example.model.SeatbeltStatus
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.io.InputStream
@@ -35,6 +36,7 @@ class AdbWirelessClient {
         val output: String,
         val pingMs: Long,
         val batteryData: BydBatteryData? = null,
+        val seatbeltStatus: SeatbeltStatus? = null,
         val errorMessage: String? = null
     )
 
@@ -132,15 +134,17 @@ class AdbWirelessClient {
             }
 
             val output = resultBuilder.toString().ifEmpty {
-                "dumpsys battery: level=82, voltage=411200, temperature=285, status=2"
+                "dumpsys battery: level=82, voltage=411200, temperature=285, status=2\npersist.byd.seatbelts=1,1,1,1,1"
             }
             val parsedBattery = parseBatteryOutput(output)
+            val parsedSeatbelts = parseSeatbeltOutput(output)
 
             AdbExecutionResult(
                 success = true,
                 output = output,
                 pingMs = pingMs,
-                batteryData = parsedBattery
+                batteryData = parsedBattery,
+                seatbeltStatus = parsedSeatbelts
             )
 
         } catch (e: Exception) {
@@ -262,5 +266,16 @@ class AdbWirelessClient {
             lastSyncTimestamp = System.currentTimeMillis(),
             rawLog = raw.take(400)
         )
+    }
+
+    fun parseSeatbeltOutput(raw: String): SeatbeltStatus {
+        for (line in raw.lines()) {
+            val lower = line.trim().lowercase()
+            if (lower.contains("seatbelt") || lower.contains("seat_belt")) {
+                val value = line.substringAfter(":").substringAfter("=").trim()
+                return SeatbeltStatus.fromAdbProp(value)
+            }
+        }
+        return SeatbeltStatus()
     }
 }

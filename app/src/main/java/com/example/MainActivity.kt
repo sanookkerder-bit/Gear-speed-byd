@@ -1,10 +1,8 @@
 package com.example
 
 import android.Manifest
-import android.app.Activity
 import android.content.pm.ActivityInfo
 import android.content.pm.PackageManager
-import android.content.res.Configuration
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -12,50 +10,53 @@ import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
-import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawing
-import androidx.compose.foundation.layout.windowInsetsPadding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Bolt
 import androidx.compose.material.icons.filled.DirectionsCar
-import androidx.compose.material.icons.filled.Navigation
-import androidx.compose.material.icons.filled.Speed
+import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Wifi
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.Icon
-import androidx.compose.material3.NavigationBar
-import androidx.compose.material3.NavigationBarItem
-import androidx.compose.material3.NavigationBarItemDefaults
-import androidx.compose.material3.NavigationRail
-import androidx.compose.material3.NavigationRailItem
-import androidx.compose.material3.NavigationRailItemDefaults
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Slider
 import androidx.compose.material3.SliderDefaults
+import androidx.compose.material3.Switch
+import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
@@ -64,14 +65,14 @@ import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.example.model.AdbConnectionStatus
+import com.example.model.ArrivalSafetyStatus
+import com.example.model.BydCarModel
 import com.example.model.CarGear
 import com.example.ui.components.TeslaTopBar
-import com.example.ui.screens.AdbSetupScreen
-import com.example.ui.screens.DashboardScreen
-import com.example.ui.screens.DrivingHudDialog
-import com.example.ui.screens.LandscapeDashboardScreen
-import com.example.ui.screens.NavPlannerScreen
-import com.example.ui.screens.VehicleProfileScreen
+import com.example.ui.screens.GoogleMapsViewScreen
+import com.example.ui.theme.EvBatteryGreen
+import com.example.ui.theme.EvBatteryRed
 import com.example.ui.theme.EvCyanPrimary
 import com.example.ui.theme.EvDeepNavy
 import com.example.ui.theme.MyApplicationTheme
@@ -80,6 +81,8 @@ import com.example.viewmodel.BydNavViewModel
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        // Enforce landscape orientation exclusively
+        requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
         enableEdgeToEdge()
         setContent {
             MyApplicationTheme {
@@ -94,21 +97,9 @@ fun BydNavApp(
     viewModel: BydNavViewModel = viewModel()
 ) {
     val context = LocalContext.current
-    val configuration = LocalConfiguration.current
-    val isLandscape = configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
-    val activity = context as? Activity
-
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
-    var selectedTab by remember { mutableIntStateOf(0) }
     var showSpeedDialog by remember { mutableStateOf(false) }
-
-    fun toggleOrientation() {
-        if (isLandscape) {
-            activity?.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
-        } else {
-            activity?.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
-        }
-    }
+    var showBatteryAdbDialog by remember { mutableStateOf(false) }
 
     // Runtime Permission Launcher for GPS Location Speed
     val locationPermissionLauncher = rememberLauncherForActivityResult(
@@ -142,7 +133,9 @@ fun BydNavApp(
             .background(EvDeepNavy),
         contentWindowInsets = WindowInsets.safeDrawing,
         topBar = {
-            // Tesla-style Top Bar with P R N D Gears + Live GPS Speed (Top Right)
+            // Tesla-style Statusbar across the top:
+            // - Left: BYD telemetry, Live Battery %, Destination Arrival Battery %, and Overlay Toggle
+            // - Right: Tesla-style P R N D Gear Selector + Live GPS Speed (Top Right Corner)
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -152,9 +145,17 @@ fun BydNavApp(
                     currentSpeedKmH = uiState.currentSpeedKmH,
                     currentGear = uiState.currentGear,
                     isGpsActive = uiState.isGpsActive,
+                    socPercent = uiState.batteryData.socPercent,
+                    arrivalSocPercent = uiState.routeCalculation?.arrivalSocPercent,
+                    safetyStatus = uiState.routeCalculation?.safetyStatus ?: ArrivalSafetyStatus.SAFE,
+                    seatbeltStatus = uiState.seatbeltStatus,
+                    isCharging = uiState.batteryData.isCharging,
                     onGearSelected = { gear -> viewModel.setGear(gear) },
                     onSpeedClick = { showSpeedDialog = true },
-                    onToggleOrientation = { toggleOrientation() },
+                    onBatteryClick = { showBatteryAdbDialog = true },
+                    onToggleSeatbelt = { seatIndex -> viewModel.toggleSeatbelt(seatIndex) },
+                    onToggleOverlay = { viewModel.toggleFloatingOverlay(context) },
+                    isOverlayActive = uiState.isOverlayActive,
                     modifier = Modifier.testTag("app_tesla_top_bar")
                 )
                 // Subtle horizontal glow separator
@@ -165,192 +166,192 @@ fun BydNavApp(
                         .background(Color(0xFF1E293B))
                 )
             }
-        },
-        bottomBar = {
-            if (!isLandscape) {
-                // Portrait Bottom Navigation Bar
-                NavigationBar(
-                    modifier = Modifier
-                        .testTag("main_bottom_nav")
-                        .windowInsetsPadding(WindowInsets.navigationBars),
-                    containerColor = Color(0xFF0B132B),
-                    contentColor = Color.White
-                ) {
-                    NavigationBarItem(
-                        selected = selectedTab == 0,
-                        onClick = { selectedTab = 0 },
-                        icon = { Icon(Icons.Default.Speed, contentDescription = "แดชบอร์ด") },
-                        label = { Text("แดชบอร์ด", fontSize = 11.sp) },
-                        colors = NavigationBarItemDefaults.colors(
-                            selectedIconColor = Color(0xFF00363D),
-                            selectedTextColor = EvCyanPrimary,
-                            indicatorColor = EvCyanPrimary,
-                            unselectedIconColor = Color(0xFF64748B),
-                            unselectedTextColor = Color(0xFF64748B)
-                        )
-                    )
-
-                    NavigationBarItem(
-                        selected = selectedTab == 1,
-                        onClick = { selectedTab = 1 },
-                        icon = { Icon(Icons.Default.Navigation, contentDescription = "นำทาง") },
-                        label = { Text("นำทาง Maps", fontSize = 11.sp) },
-                        colors = NavigationBarItemDefaults.colors(
-                            selectedIconColor = Color(0xFF00363D),
-                            selectedTextColor = EvCyanPrimary,
-                            indicatorColor = EvCyanPrimary,
-                            unselectedIconColor = Color(0xFF64748B),
-                            unselectedTextColor = Color(0xFF64748B)
-                        )
-                    )
-
-                    NavigationBarItem(
-                        selected = selectedTab == 2,
-                        onClick = { selectedTab = 2 },
-                        icon = { Icon(Icons.Default.Wifi, contentDescription = "ADB / OBD2") },
-                        label = { Text("เชื่อมต่อ", fontSize = 11.sp) },
-                        colors = NavigationBarItemDefaults.colors(
-                            selectedIconColor = Color(0xFF00363D),
-                            selectedTextColor = EvCyanPrimary,
-                            indicatorColor = EvCyanPrimary,
-                            unselectedIconColor = Color(0xFF64748B),
-                            unselectedTextColor = Color(0xFF64748B)
-                        )
-                    )
-
-                    NavigationBarItem(
-                        selected = selectedTab == 3,
-                        onClick = { selectedTab = 3 },
-                        icon = { Icon(Icons.Default.DirectionsCar, contentDescription = "รถ BYD") },
-                        label = { Text("รุ่นรถ BYD", fontSize = 11.sp) },
-                        colors = NavigationBarItemDefaults.colors(
-                            selectedIconColor = Color(0xFF00363D),
-                            selectedTextColor = EvCyanPrimary,
-                            indicatorColor = EvCyanPrimary,
-                            unselectedIconColor = Color(0xFF64748B),
-                            unselectedTextColor = Color(0xFF64748B)
-                        )
-                    )
-                }
-            }
         }
     ) { innerPadding ->
-        Row(
+        // Direct Embedded Google Maps Fullscreen Display (Replaces old navigation & tabs completely)
+        Box(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(innerPadding)
                 .background(EvDeepNavy)
         ) {
-            // In Landscape Mode: Left NavigationRail
-            if (isLandscape) {
-                NavigationRail(
-                    modifier = Modifier.fillMaxHeight(),
-                    containerColor = Color(0xFF0B132B),
-                    contentColor = Color.White
-                ) {
-                    NavigationRailItem(
-                        selected = selectedTab == 0,
-                        onClick = { selectedTab = 0 },
-                        icon = { Icon(Icons.Default.Speed, contentDescription = "แดชบอร์ด") },
-                        label = { Text("หน้าจอหลัก", fontSize = 10.sp) },
-                        colors = NavigationRailItemDefaults.colors(
-                            selectedIconColor = Color(0xFF00363D),
-                            selectedTextColor = EvCyanPrimary,
-                            indicatorColor = EvCyanPrimary,
-                            unselectedIconColor = Color(0xFF64748B),
-                            unselectedTextColor = Color(0xFF64748B)
-                        )
-                    )
-
-                    NavigationRailItem(
-                        selected = selectedTab == 1,
-                        onClick = { selectedTab = 1 },
-                        icon = { Icon(Icons.Default.Navigation, contentDescription = "นำทาง") },
-                        label = { Text("นำทาง", fontSize = 10.sp) },
-                        colors = NavigationRailItemDefaults.colors(
-                            selectedIconColor = Color(0xFF00363D),
-                            selectedTextColor = EvCyanPrimary,
-                            indicatorColor = EvCyanPrimary,
-                            unselectedIconColor = Color(0xFF64748B),
-                            unselectedTextColor = Color(0xFF64748B)
-                        )
-                    )
-
-                    NavigationRailItem(
-                        selected = selectedTab == 2,
-                        onClick = { selectedTab = 2 },
-                        icon = { Icon(Icons.Default.Wifi, contentDescription = "เชื่อมต่อ") },
-                        label = { Text("เชื่อมต่อ", fontSize = 10.sp) },
-                        colors = NavigationRailItemDefaults.colors(
-                            selectedIconColor = Color(0xFF00363D),
-                            selectedTextColor = EvCyanPrimary,
-                            indicatorColor = EvCyanPrimary,
-                            unselectedIconColor = Color(0xFF64748B),
-                            unselectedTextColor = Color(0xFF64748B)
-                        )
-                    )
-
-                    NavigationRailItem(
-                        selected = selectedTab == 3,
-                        onClick = { selectedTab = 3 },
-                        icon = { Icon(Icons.Default.DirectionsCar, contentDescription = "รถ BYD") },
-                        label = { Text("รุ่นรถ", fontSize = 10.sp) },
-                        colors = NavigationRailItemDefaults.colors(
-                            selectedIconColor = Color(0xFF00363D),
-                            selectedTextColor = EvCyanPrimary,
-                            indicatorColor = EvCyanPrimary,
-                            unselectedIconColor = Color(0xFF64748B),
-                            unselectedTextColor = Color(0xFF64748B)
-                        )
-                    )
-                }
-            }
-
-            // Main Content Area
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .weight(1f)
-            ) {
-                when (selectedTab) {
-                    0 -> {
-                        if (isLandscape) {
-                            LandscapeDashboardScreen(
-                                viewModel = viewModel,
-                                uiState = uiState,
-                                onNavigateToTab = { selectedTab = it }
-                            )
-                        } else {
-                            DashboardScreen(
-                                viewModel = viewModel,
-                                uiState = uiState,
-                                onNavigateToTab = { selectedTab = it }
-                            )
-                        }
-                    }
-                    1 -> NavPlannerScreen(
-                        viewModel = viewModel,
-                        uiState = uiState
-                    )
-                    2 -> AdbSetupScreen(
-                        viewModel = viewModel,
-                        uiState = uiState
-                    )
-                    3 -> VehicleProfileScreen(
-                        viewModel = viewModel,
-                        uiState = uiState
-                    )
-                }
-            }
+            GoogleMapsViewScreen(
+                viewModel = viewModel,
+                uiState = uiState,
+                modifier = Modifier.fillMaxSize()
+            )
         }
     }
 
-    // Fullscreen Driving HUD Mode Dialog
-    if (uiState.isHudModeOpen) {
-        DrivingHudDialog(
-            viewModel = viewModel,
-            uiState = uiState,
-            onDismiss = { viewModel.setHudMode(false) }
+    // Quick Battery & Wireless ADB Config Dialog
+    if (showBatteryAdbDialog) {
+        AlertDialog(
+            onDismissRequest = { showBatteryAdbDialog = false },
+            title = {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(Icons.Default.Bolt, contentDescription = null, tint = EvCyanPrimary)
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(
+                        text = "จัดการข้อมูลแบตเตอรี่ & เชื่อมต่อ ADB รถ BYD",
+                        color = Color.White,
+                        fontSize = 16.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
+            },
+            text = {
+                Column(modifier = Modifier.fillMaxWidth()) {
+                    // Battery Level Adjustment Slider
+                    Text(
+                        text = "ระดับแบตเตอรี่ปัจจุบัน (SoC): ${uiState.batteryData.socPercent}%",
+                        color = EvCyanPrimary,
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+                    Spacer(modifier = Modifier.height(6.dp))
+                    Slider(
+                        value = uiState.batteryData.socPercent.toFloat(),
+                        onValueChange = { viewModel.setBatteryLevelManually(it.toInt()) },
+                        valueRange = 1f..100f,
+                        steps = 98,
+                        colors = SliderDefaults.colors(
+                            thumbColor = EvCyanPrimary,
+                            activeTrackColor = EvCyanPrimary
+                        )
+                    )
+                    Text(
+                        text = "ระยะทางที่วิ่งได้โดยประมาณ: ${uiState.batteryData.estimatedRangeKm} กม. | แรงดัน ${uiState.batteryData.voltageVolts}V",
+                        fontSize = 11.sp,
+                        color = Color(0xFF94A3B8)
+                    )
+
+                    Spacer(modifier = Modifier.height(12.dp))
+
+                    // Vehicle Model Selection
+                    Text(
+                        text = "รุ่นรถ BYD: ${uiState.carModel.name}",
+                        color = Color.White,
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                    Spacer(modifier = Modifier.height(4.dp))
+                    LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        items(BydCarModel.ALL_MODELS) { model ->
+                            val isSelected = uiState.carModel.id == model.id
+                            FilledTonalButton(
+                                onClick = { viewModel.updateCarModel(model) },
+                                shape = RoundedCornerShape(8.dp),
+                                colors = ButtonDefaults.filledTonalButtonColors(
+                                    containerColor = if (isSelected) EvCyanPrimary else Color(0xFF1E293B),
+                                    contentColor = if (isSelected) Color(0xFF00363D) else Color.White
+                                )
+                            ) {
+                                Text(model.name, fontSize = 10.sp)
+                            }
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(12.dp))
+
+                    // Wireless ADB Quick Connect to BYD DiLink
+                    Text(
+                        text = "เชื่อมต่อ ADB ไร้สาย (Android Debug Bridge - BYD DiLink)",
+                        color = Color.White,
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                    Spacer(modifier = Modifier.height(6.dp))
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        OutlinedTextField(
+                            value = uiState.adbConfig.ipAddress,
+                            onValueChange = { viewModel.updateAdbIp(it) },
+                            label = { Text("IP Address", fontSize = 10.sp) },
+                            singleLine = true,
+                            modifier = Modifier.weight(1.5f),
+                            shape = RoundedCornerShape(8.dp),
+                            colors = OutlinedTextFieldDefaults.colors(
+                                focusedBorderColor = EvCyanPrimary,
+                                unfocusedBorderColor = Color(0xFF334155),
+                                focusedTextColor = Color.White,
+                                unfocusedTextColor = Color.White
+                            )
+                        )
+                        OutlinedTextField(
+                            value = uiState.adbConfig.port.toString(),
+                            onValueChange = { it.toIntOrNull()?.let { p -> viewModel.updateAdbPort(p) } },
+                            label = { Text("Port", fontSize = 10.sp) },
+                            singleLine = true,
+                            modifier = Modifier.weight(1f),
+                            shape = RoundedCornerShape(8.dp),
+                            colors = OutlinedTextFieldDefaults.colors(
+                                focusedBorderColor = EvCyanPrimary,
+                                unfocusedBorderColor = Color(0xFF334155),
+                                focusedTextColor = Color.White,
+                                unfocusedTextColor = Color.White
+                            )
+                        )
+                    }
+
+                    Spacer(modifier = Modifier.height(8.dp))
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            val isConnected = uiState.adbStatus is AdbConnectionStatus.Connected
+                            Box(
+                                modifier = Modifier
+                                    .size(8.dp)
+                                    .clip(RoundedCornerShape(4.dp))
+                                    .background(if (isConnected) EvBatteryGreen else Color(0xFF64748B))
+                            )
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text(
+                                text = if (isConnected) "เชื่อมต่อสำเร็จ" else "ยังไม่เชื่อมต่อ",
+                                fontSize = 11.sp,
+                                color = if (isConnected) EvBatteryGreen else Color(0xFF94A3B8)
+                            )
+                        }
+
+                        Button(
+                            onClick = {
+                                if (uiState.adbStatus is AdbConnectionStatus.Connected) {
+                                    viewModel.disconnectAdb()
+                                } else {
+                                    viewModel.connectAdb()
+                                }
+                            },
+                            shape = RoundedCornerShape(8.dp),
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = if (uiState.adbStatus is AdbConnectionStatus.Connected) Color(0xFFDC2626) else EvCyanPrimary,
+                                contentColor = if (uiState.adbStatus is AdbConnectionStatus.Connected) Color.White else Color(0xFF00363D)
+                            )
+                        ) {
+                            Text(
+                                text = if (uiState.adbStatus is AdbConnectionStatus.Connected) "ตัดการเชื่อมต่อ" else "เชื่อมต่อ ADB",
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = { showBatteryAdbDialog = false },
+                    colors = ButtonDefaults.buttonColors(containerColor = EvCyanPrimary, contentColor = Color(0xFF00363D))
+                ) {
+                    Text("ตกลง", fontWeight = FontWeight.Bold)
+                }
+            },
+            containerColor = Color(0xFF0F172A),
+            shape = RoundedCornerShape(18.dp)
         )
     }
 
@@ -359,7 +360,12 @@ fun BydNavApp(
         AlertDialog(
             onDismissRequest = { showSpeedDialog = false },
             title = {
-                Text("ทดสอบปรับความเร็ว GPS & เกียร์รถยนต์", color = Color.White, fontSize = 16.sp, fontWeight = FontWeight.Bold)
+                Text(
+                    text = "ทดสอบปรับความเร็ว GPS & เกียร์รถยนต์",
+                    color = Color.White,
+                    fontSize = 16.sp,
+                    fontWeight = FontWeight.Bold
+                )
             },
             text = {
                 Column {
@@ -381,7 +387,7 @@ fun BydNavApp(
                     )
                     Spacer(modifier = Modifier.height(8.dp))
                     Text(
-                        text = "เลือกเกียร์: P (จอด) | R (ถอย) | N (ว่าง) | D (ขับขี่)",
+                        text = "แตะ P R N D บน Statusbar เพื่อเปลี่ยนเกียร์ หรือตั้งค่าความเร็ว",
                         color = Color(0xFF94A3B8),
                         fontSize = 12.sp
                     )

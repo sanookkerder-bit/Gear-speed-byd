@@ -20,18 +20,12 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Bluetooth
 import androidx.compose.material.icons.filled.CheckCircle
-import androidx.compose.material.icons.filled.Code
-import androidx.compose.material.icons.filled.DirectionsCar
 import androidx.compose.material.icons.filled.HelpOutline
-import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.Layers
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Send
-import androidx.compose.material.icons.filled.Speed
 import androidx.compose.material.icons.filled.Terminal
-import androidx.compose.material.icons.filled.Usb
-import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material.icons.filled.Wifi
 import androidx.compose.material.icons.filled.WifiOff
 import androidx.compose.material3.Button
@@ -42,20 +36,14 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
-import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Switch
 import androidx.compose.material3.SwitchDefaults
-import androidx.compose.material3.Tab
-import androidx.compose.material3.TabRow
-import androidx.compose.material3.TabRowDefaults.SecondaryIndicator
-import androidx.compose.material3.TabRowDefaults.tabIndicatorOffset
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -63,6 +51,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
@@ -71,12 +60,10 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.model.AdbConnectionStatus
-import com.example.model.WirelessProtocol
 import com.example.ui.theme.EvBatteryAmber
 import com.example.ui.theme.EvBatteryGreen
 import com.example.ui.theme.EvBatteryRed
 import com.example.ui.theme.EvCyanPrimary
-import com.example.ui.theme.EvElectricBlue
 import com.example.viewmodel.BydNavUiState
 import com.example.viewmodel.BydNavViewModel
 import java.text.SimpleDateFormat
@@ -89,6 +76,7 @@ fun AdbSetupScreen(
     uiState: BydNavUiState,
     modifier: Modifier = Modifier
 ) {
+    val context = LocalContext.current
     var showGuide by remember { mutableStateOf(false) }
     var customCommandText by remember { mutableStateOf("dumpsys battery") }
 
@@ -104,64 +92,80 @@ fun AdbSetupScreen(
         item {
             Spacer(modifier = Modifier.height(6.dp))
             Text(
-                text = "เชื่อมต่อไร้สายอ่านข้อมูลแบตเตอรี่ BYD",
+                text = "เชื่อมต่อ ADB ไร้สาย (Android Debug Bridge)",
                 fontSize = 18.sp,
                 fontWeight = FontWeight.Bold,
                 color = Color.White
             )
             Text(
-                text = "รองรับทั้ง ADB Wireless (Android Debug Bridge) และ อะแดปเตอร์ OBD2 ไร้สาย",
+                text = "ดึงระดับแบตเตอรี่รถ BYD (SoC%) จากหน้าจอ DiLink ผ่าน Wi-Fi และแสดงทับแอพอื่น",
                 fontSize = 12.sp,
                 color = Color(0xFF94A3B8)
             )
         }
 
-        // Protocol Selector Tabs: ADB Wireless vs OBD2 Wi-Fi vs OBD2 Bluetooth
+        // FLOATING SYSTEM STATUSBAR OVERLAY CARD
         item {
             Card(
-                modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(18.dp),
-                colors = CardDefaults.cardColors(containerColor = Color(0xFF0F172A))
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .testTag("floating_overlay_card"),
+                shape = RoundedCornerShape(20.dp),
+                colors = CardDefaults.cardColors(
+                    containerColor = if (uiState.isOverlayActive) Color(0xFF00363D) else Color(0xFF0F172A)
+                )
             ) {
-                Column(modifier = Modifier.padding(6.dp)) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(16.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
                     Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clip(RoundedCornerShape(14.dp))
-                            .background(Color(0xFF1E293B))
-                            .padding(4.dp),
-                        horizontalArrangement = Arrangement.spacedBy(4.dp)
+                        modifier = Modifier.weight(1f),
+                        verticalAlignment = Alignment.CenterVertically
                     ) {
-                        ProtocolSelectTab(
-                            title = "ADB ไร้สาย",
-                            subtitle = "DiLink (5555)",
-                            icon = Icons.Default.Wifi,
-                            isSelected = uiState.activeProtocol == WirelessProtocol.ADB_WIFI,
-                            modifier = Modifier.weight(1f)
+                        Box(
+                            modifier = Modifier
+                                .size(40.dp)
+                                .clip(CircleShape)
+                                .background(if (uiState.isOverlayActive) EvBatteryGreen.copy(alpha = 0.2f) else Color(0xFF1E293B)),
+                            contentAlignment = Alignment.Center
                         ) {
-                            viewModel.updateProtocol(WirelessProtocol.ADB_WIFI)
+                            Icon(
+                                imageVector = Icons.Default.Layers,
+                                contentDescription = "Overlay",
+                                tint = if (uiState.isOverlayActive) EvBatteryGreen else EvCyanPrimary,
+                                modifier = Modifier.size(22.dp)
+                            )
                         }
 
-                        ProtocolSelectTab(
-                            title = "OBD2 Wi-Fi",
-                            subtitle = "ELM327",
-                            icon = Icons.Default.DirectionsCar,
-                            isSelected = uiState.activeProtocol == WirelessProtocol.OBD2_WIFI,
-                            modifier = Modifier.weight(1f)
-                        ) {
-                            viewModel.updateProtocol(WirelessProtocol.OBD2_WIFI)
-                        }
+                        Spacer(modifier = Modifier.width(12.dp))
 
-                        ProtocolSelectTab(
-                            title = "OBD2 Bluetooth",
-                            subtitle = "BT อะแดปเตอร์",
-                            icon = Icons.Default.Bluetooth,
-                            isSelected = uiState.activeProtocol == WirelessProtocol.OBD2_BLUETOOTH,
-                            modifier = Modifier.weight(1f)
-                        ) {
-                            viewModel.updateProtocol(WirelessProtocol.OBD2_BLUETOOTH)
+                        Column {
+                            Text(
+                                text = "แสดง Statusbar ทับแอพอื่น (เช่น Google Maps)",
+                                fontSize = 14.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = Color.White
+                            )
+                            Text(
+                                text = if (uiState.isOverlayActive) "แถบลอยเปิดอยู่ ค้างแสดงบนจอแม้สลับไปแอพอื่น" else "แตะเพื่อเปิดแถบความเร็ว เกียร์ และแบตเตอรี่ลอยทับหน้าจอ",
+                                fontSize = 11.sp,
+                                color = if (uiState.isOverlayActive) EvCyanPrimary else Color(0xFF94A3B8)
+                            )
                         }
                     }
+
+                    Switch(
+                        checked = uiState.isOverlayActive,
+                        onCheckedChange = { viewModel.toggleFloatingOverlay(context) },
+                        colors = SwitchDefaults.colors(
+                            checkedThumbColor = Color(0xFF00363D),
+                            checkedTrackColor = EvCyanPrimary
+                        )
+                    )
                 }
             }
         }
@@ -171,7 +175,7 @@ fun AdbSetupScreen(
             Card(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .testTag("connection_control_card"),
+                    .testTag("adb_connection_card"),
                 shape = RoundedCornerShape(22.dp),
                 colors = CardDefaults.cardColors(containerColor = Color(0xFF0F172A))
             ) {
@@ -211,16 +215,16 @@ fun AdbSetupScreen(
                             Column {
                                 Text(
                                     text = when {
-                                        isConnected -> "เชื่อมต่อสำเร็จ (${uiState.activeProtocol.titleThai})"
-                                        isConnecting -> "กำลังเชื่อมต่อ..."
-                                        else -> "พร้อมเชื่อมต่อ ${uiState.activeProtocol.titleThai}"
+                                        isConnected -> "เชื่อมต่อ ADB ไร้สายสำเร็จ"
+                                        isConnecting -> "กำลังเชื่อมต่อไปยัง DiLink..."
+                                        else -> "พร้อมเชื่อมต่อ ADB ไร้สาย"
                                     },
                                     fontSize = 14.sp,
                                     fontWeight = FontWeight.Bold,
                                     color = Color.White
                                 )
                                 Text(
-                                    text = if (isConnected) "ดึงระดับแบตเตอรี่เรียลไทม์ต่อเนื่อง" else uiState.activeProtocol.subtitleThai,
+                                    text = if (isConnected) "ที่อยู่: ${uiState.adbConfig.address}" else "พอร์ตมาตรฐาน 5555 บน DiLink",
                                     fontSize = 11.sp,
                                     color = Color(0xFF94A3B8)
                                 )
@@ -238,126 +242,61 @@ fun AdbSetupScreen(
 
                     Spacer(modifier = Modifier.height(16.dp))
 
-                    // Dynamic inputs based on protocol
-                    if (uiState.activeProtocol == WirelessProtocol.ADB_WIFI) {
-                        // ADB Wireless IP & Port
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(10.dp)
-                        ) {
-                            OutlinedTextField(
-                                value = uiState.adbConfig.ipAddress,
-                                onValueChange = { viewModel.updateAdbIp(it) },
-                                label = { Text("IP Address ของ DiLink", fontSize = 11.sp) },
-                                singleLine = true,
-                                modifier = Modifier
-                                    .weight(2f)
-                                    .testTag("input_adb_ip"),
-                                colors = OutlinedTextFieldDefaults.colors(
-                                    focusedBorderColor = EvCyanPrimary,
-                                    unfocusedBorderColor = Color(0xFF334155),
-                                    focusedTextColor = Color.White,
-                                    unfocusedTextColor = Color.White
-                                ),
-                                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Text)
-                            )
-
-                            OutlinedTextField(
-                                value = uiState.adbConfig.port.toString(),
-                                onValueChange = { it.toIntOrNull()?.let { p -> viewModel.updateAdbPort(p) } },
-                                label = { Text("Port", fontSize = 11.sp) },
-                                singleLine = true,
-                                modifier = Modifier
-                                    .weight(1f)
-                                    .testTag("input_adb_port"),
-                                colors = OutlinedTextFieldDefaults.colors(
-                                    focusedBorderColor = EvCyanPrimary,
-                                    unfocusedBorderColor = Color(0xFF334155),
-                                    focusedTextColor = Color.White,
-                                    unfocusedTextColor = Color.White
-                                ),
-                                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
-                            )
-                        }
-
-                        Spacer(modifier = Modifier.height(10.dp))
-
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(8.dp)
-                        ) {
-                            QuickIpChip("Hotspot 192.168.43.1") {
-                                viewModel.updateAdbIp("192.168.43.1")
-                                viewModel.updateAdbPort(5555)
-                            }
-                            QuickIpChip("Wi-Fi 192.168.1.100") {
-                                viewModel.updateAdbIp("192.168.1.100")
-                                viewModel.updateAdbPort(5555)
-                            }
-                        }
-                    } else if (uiState.activeProtocol == WirelessProtocol.OBD2_WIFI) {
-                        // OBD2 Wi-Fi IP & Port
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(10.dp)
-                        ) {
-                            OutlinedTextField(
-                                value = uiState.obd2Config.wifiIp,
-                                onValueChange = { viewModel.updateObdConfig(uiState.obd2Config.copy(wifiIp = it)) },
-                                label = { Text("IP อะแดปเตอร์ OBD2 Wi-Fi", fontSize = 11.sp) },
-                                singleLine = true,
-                                modifier = Modifier.weight(2f),
-                                colors = OutlinedTextFieldDefaults.colors(
-                                    focusedBorderColor = EvCyanPrimary,
-                                    unfocusedBorderColor = Color(0xFF334155),
-                                    focusedTextColor = Color.White,
-                                    unfocusedTextColor = Color.White
-                                )
-                            )
-
-                            OutlinedTextField(
-                                value = uiState.obd2Config.wifiPort.toString(),
-                                onValueChange = { it.toIntOrNull()?.let { p -> viewModel.updateObdConfig(uiState.obd2Config.copy(wifiPort = p)) } },
-                                label = { Text("Port (35000)", fontSize = 11.sp) },
-                                singleLine = true,
-                                modifier = Modifier.weight(1f),
-                                colors = OutlinedTextFieldDefaults.colors(
-                                    focusedBorderColor = EvCyanPrimary,
-                                    unfocusedBorderColor = Color(0xFF334155),
-                                    focusedTextColor = Color.White,
-                                    unfocusedTextColor = Color.White
-                                )
-                            )
-                        }
-
-                        Spacer(modifier = Modifier.height(10.dp))
-
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(8.dp)
-                        ) {
-                            QuickIpChip("Default 192.168.0.10:35000") {
-                                viewModel.updateObdConfig(uiState.obd2Config.copy(wifiIp = "192.168.0.10", wifiPort = 35000))
-                            }
-                            QuickIpChip("Vgate 192.168.1.5:35000") {
-                                viewModel.updateObdConfig(uiState.obd2Config.copy(wifiIp = "192.168.1.5", wifiPort = 35000))
-                            }
-                        }
-                    } else {
-                        // OBD2 Bluetooth device name / address
+                    // IP Address & Port Inputs
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
                         OutlinedTextField(
-                            value = uiState.obd2Config.bluetoothDeviceName,
-                            onValueChange = { viewModel.updateObdConfig(uiState.obd2Config.copy(bluetoothDeviceName = it)) },
-                            label = { Text("ชื่ออุปกรณ์บลูทูธ (เช่น OBDII / Vgate / OBDLink)", fontSize = 11.sp) },
+                            value = uiState.adbConfig.ipAddress,
+                            onValueChange = { viewModel.updateAdbIp(it) },
+                            label = { Text("IP ของรถ BYD (เช่น 192.168.43.1)", fontSize = 11.sp) },
                             singleLine = true,
-                            modifier = Modifier.fillMaxWidth(),
+                            modifier = Modifier
+                                .weight(2f)
+                                .testTag("input_adb_ip"),
                             colors = OutlinedTextFieldDefaults.colors(
                                 focusedBorderColor = EvCyanPrimary,
                                 unfocusedBorderColor = Color(0xFF334155),
                                 focusedTextColor = Color.White,
                                 unfocusedTextColor = Color.White
-                            )
+                            ),
+                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Text)
                         )
+
+                        OutlinedTextField(
+                            value = uiState.adbConfig.port.toString(),
+                            onValueChange = { it.toIntOrNull()?.let { p -> viewModel.updateAdbPort(p) } },
+                            label = { Text("Port", fontSize = 11.sp) },
+                            singleLine = true,
+                            modifier = Modifier
+                                .weight(1f)
+                                .testTag("input_adb_port"),
+                            colors = OutlinedTextFieldDefaults.colors(
+                                focusedBorderColor = EvCyanPrimary,
+                                unfocusedBorderColor = Color(0xFF334155),
+                                focusedTextColor = Color.White,
+                                unfocusedTextColor = Color.White
+                            ),
+                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
+                        )
+                    }
+
+                    Spacer(modifier = Modifier.height(10.dp))
+
+                    // Preset Chips
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        QuickIpChip("Hotspot 192.168.43.1") {
+                            viewModel.updateAdbIp("192.168.43.1")
+                            viewModel.updateAdbPort(5555)
+                        }
+                        QuickIpChip("Wi-Fi 192.168.1.100") {
+                            viewModel.updateAdbIp("192.168.1.100")
+                            viewModel.updateAdbPort(5555)
+                        }
                     }
 
                     Spacer(modifier = Modifier.height(14.dp))
@@ -369,10 +308,10 @@ fun AdbSetupScreen(
                     ) {
                         if (!isConnected) {
                             Button(
-                                onClick = { viewModel.connectWirelessAdapter() },
+                                onClick = { viewModel.connectAdb() },
                                 modifier = Modifier
                                     .weight(1f)
-                                    .testTag("btn_connect_wireless"),
+                                    .testTag("btn_connect_adb"),
                                 shape = RoundedCornerShape(12.dp),
                                 colors = ButtonDefaults.buttonColors(
                                     containerColor = EvCyanPrimary,
@@ -381,14 +320,14 @@ fun AdbSetupScreen(
                             ) {
                                 Icon(Icons.Default.Wifi, contentDescription = null, modifier = Modifier.size(16.dp))
                                 Spacer(modifier = Modifier.width(6.dp))
-                                Text("เชื่อมต่อดึงแบตเตอรี่", fontWeight = FontWeight.Bold)
+                                Text("เชื่อมต่อ ADB ไร้สาย", fontWeight = FontWeight.Bold)
                             }
                         } else {
                             OutlinedButton(
                                 onClick = { viewModel.disconnectAdb() },
                                 modifier = Modifier
                                     .weight(1f)
-                                    .testTag("btn_disconnect_wireless"),
+                                    .testTag("btn_disconnect_adb"),
                                 shape = RoundedCornerShape(12.dp),
                                 colors = ButtonDefaults.outlinedButtonColors(contentColor = EvBatteryRed)
                             ) {
@@ -399,7 +338,7 @@ fun AdbSetupScreen(
 
                             FilledTonalButton(
                                 onClick = { viewModel.refreshBatteryNow() },
-                                modifier = Modifier.testTag("btn_refresh_now"),
+                                modifier = Modifier.testTag("btn_sync_now"),
                                 shape = RoundedCornerShape(12.dp)
                             ) {
                                 Icon(Icons.Default.Refresh, contentDescription = null, modifier = Modifier.size(16.dp))
@@ -411,7 +350,7 @@ fun AdbSetupScreen(
 
                     Spacer(modifier = Modifier.height(12.dp))
 
-                    // Demo Mode Toggle Switch
+                    // Demo Mode Switch
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -423,13 +362,13 @@ fun AdbSetupScreen(
                     ) {
                         Column {
                             Text(
-                                text = "โหมดจำลอง (Simulator Demo Mode)",
+                                text = "โหมดจำลอง (DiLink Demo Mode)",
                                 fontSize = 12.sp,
                                 fontWeight = FontWeight.Bold,
                                 color = Color.White
                             )
                             Text(
-                                text = "จำลองการอ่านแบตเตอรี่สดเพื่อทดสอบระบบนำทางทันที",
+                                text = "ทดสอบการทำงานและแถบลอยทับแอพอื่นได้ทันที",
                                 fontSize = 10.sp,
                                 color = Color(0xFF94A3B8)
                             )
@@ -470,7 +409,7 @@ fun AdbSetupScreen(
                             )
                             Spacer(modifier = Modifier.width(8.dp))
                             Text(
-                                text = "คู่มือตั้งค่าการเชื่อมต่อรถ BYD",
+                                text = "วิธีเปิดใช้งาน Wireless ADB บนหน้าจอ BYD DiLink",
                                 fontSize = 13.sp,
                                 fontWeight = FontWeight.Bold,
                                 color = Color.White
@@ -489,18 +428,23 @@ fun AdbSetupScreen(
                         Column(modifier = Modifier.padding(top = 10.dp)) {
                             GuideStepItem(
                                 stepNumber = 1,
-                                title = "สำหรับ ADB Wireless (หน้าจอกลาง DiLink)",
-                                desc = "เชื่อมต่อ Wi-Fi Hotspot ในรถ หรือวงเดียวกัน -> เปิด Wireless ADB ใน DiLink Developer Options (หรือพิมพ์โค้ด *#*#byd#*#*) -> ใส่ IP เช่น 192.168.43.1:5555"
+                                title = "เชื่อมต่อเครือข่ายเดียวกัน",
+                                desc = "เปิด Personal Hotspot บนมือถือ แล้วให้หน้าจอกลาง BYD DiLink เชื่อมต่อ Wi-Fi หรือเชื่อม Wi-Fi วงเดียวกัน"
                             )
                             GuideStepItem(
                                 stepNumber = 2,
-                                title = "สำหรับ OBD2 ไร้สาย (ELM327 Wi-Fi / Bluetooth)",
-                                desc = "เสียบอะแดปเตอร์ OBD2 เข้ากับช่อง OBD2 ใต้พวงมาลัยรถ BYD -> เชื่อมต่อ Wi-Fi อะแดปเตอร์ (ปกติ IP 192.168.0.10 พอร์ต 35000) หรือจับคู่บลูทูธ OBDII ในการตั้งค่าเครื่อง"
+                                title = "เปิด Developer Options ใน DiLink",
+                                desc = "ที่หน้าจอกลางรถ เข้า การตั้งค่า (Settings) -> ระบบ (System) -> ข้อมูลเวอร์ชัน แตะ 'หมายเลขบิลด์ (Build Number)' 7 ครั้ง หรือเข้า Dialer พิมพ์ *#*#byd#*#*"
                             )
                             GuideStepItem(
                                 stepNumber = 3,
-                                title = "การอ่านข้อมูลต่อเนื่อง",
-                                desc = "เมื่อเชื่อมต่อแล้ว แอพจะอ่านค่าเปอร์เซ็นต์แบตเตอรี่ (SoC%) แรงดันไฟฟ้า และระยะทางอย่างต่อเนื่องทุก 2-5 วินาที"
+                                title = "เปิด Wireless Debugging (พอร์ต 5555)",
+                                desc = "เปิด 'การแก้ไขข้อบกพร่อง USB/ไร้สาย (Wireless ADB)'"
+                            )
+                            GuideStepItem(
+                                stepNumber = 4,
+                                title = "ตรวจสอบ IP และกดอนุญาต",
+                                desc = "ระบุ IP Address ของรถ (หากเป็น Hotspot ปกติคือ 192.168.43.1) แล้วกดเชื่อมต่อ เมื่อมีหน้าต่างขึ้นบนหน้าจอกลางรถ ให้กดยอมรับ 'Always allow'"
                             )
                         }
                     }
@@ -508,7 +452,7 @@ fun AdbSetupScreen(
             }
         }
 
-        // Live ADB / OBD2 Console Log Terminal
+        // Live ADB Terminal Console Log
         item {
             Card(
                 modifier = Modifier.fillMaxWidth(),
@@ -530,7 +474,7 @@ fun AdbSetupScreen(
                             )
                             Spacer(modifier = Modifier.width(6.dp))
                             Text(
-                                text = "เทอร์มินัลบันทึกคำสั่งและข้อมูลสด (Console Log)",
+                                text = "บันทึกคำสั่งและข้อมูล ADB (Console Log)",
                                 fontSize = 13.sp,
                                 fontWeight = FontWeight.Bold,
                                 color = Color.White
@@ -630,36 +574,6 @@ fun AdbSetupScreen(
 }
 
 @Composable
-fun ProtocolSelectTab(
-    title: String,
-    subtitle: String,
-    icon: androidx.compose.ui.graphics.vector.ImageVector,
-    isSelected: Boolean,
-    modifier: Modifier = Modifier,
-    onClick: () -> Unit
-) {
-    FilledTonalButton(
-        onClick = onClick,
-        modifier = modifier,
-        shape = RoundedCornerShape(10.dp),
-        colors = ButtonDefaults.filledTonalButtonColors(
-            containerColor = if (isSelected) EvCyanPrimary else Color.Transparent,
-            contentColor = if (isSelected) Color(0xFF00363D) else Color(0xFF94A3B8)
-        )
-    ) {
-        Column(
-            horizontalAlignment = Alignment.CenterHorizontally,
-            modifier = Modifier.padding(vertical = 2.dp)
-        ) {
-            Icon(imageVector = icon, contentDescription = title, modifier = Modifier.size(16.dp))
-            Spacer(modifier = Modifier.height(2.dp))
-            Text(text = title, fontSize = 11.sp, fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal)
-            Text(text = subtitle, fontSize = 9.sp, color = if (isSelected) Color(0xFF004F58) else Color(0xFF64748B))
-        }
-    }
-}
-
-@Composable
 fun GuideStepItem(stepNumber: Int, title: String, desc: String) {
     Row(
         modifier = Modifier
@@ -701,4 +615,3 @@ fun QuickIpChip(text: String, onClick: () -> Unit) {
         Text(text, fontSize = 11.sp)
     }
 }
-
